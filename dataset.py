@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
+import mask
 from torchvision import transforms
 
 TRAIN_IMG_DIR = '/home/pranav/DeepLabV3_Xception/data/training/image_2'
@@ -29,7 +30,7 @@ def rgb_to_class_pil(image, color_to_class):
     class_mask_np = np.zeros((image_np.shape[0], image_np.shape[1]), dtype=np.uint8)
     
     # Iterate over the color_to_class dictionary
-    for rgb, cls in color_to_class.items():
+    for cls, rgb in color_to_class.items():
         # Check where the RGB values match the current RGB tuple
         mask_equal = np.all(image_np == np.array(rgb), axis=-1)
         # Assign class index to corresponding locations in class_mask_np
@@ -65,7 +66,7 @@ class IndianDrivigDataset(Dataset):
             
             # Extend lists with full paths
             self.images.extend([os.path.join(sub_img_dir, img) for img in images])
-            self.masks.extend([os.path.join(sub_mask_dir, mask) for mask in masks])
+            self.masks.extend([os.path.join(sub_mask_dir, i) for i in masks])
 
     def __len__(self):
         return len(self.images)
@@ -75,17 +76,19 @@ class IndianDrivigDataset(Dataset):
         mask_path = self.masks[idx]
 
         image = Image.open(img_path).convert("RGB")
-        mask = Image.open(mask_path).convert("L")
+        masks = Image.open(mask_path).convert("RGB")
 
         if self.transform_img:
             image = self.transform_img(image)
 
         if self.transform_mask:
-            mask=self.transform_mask(mask)
+            color_to_class={idx: mask.palette[idx].tolist() for idx in range(len(mask.palette))}
+            masks=rgb_to_class_pil(masks, color_to_class)
+            masks=self.transform_mask(masks)
             
-        #print(mask)
+        #print(torch.unique(masks))
 
-        return image, mask
+        return image, masks
         
 
     

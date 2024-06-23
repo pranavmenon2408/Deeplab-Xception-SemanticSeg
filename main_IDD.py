@@ -6,7 +6,7 @@ from tqdm import tqdm
 from model import DeepLabV3
 from utils_IDD import train_loader, DEVICE, NUM_CLASSES, NUM_EPOCHS, LR, calculate_accuracy,val_loader
 
-model = DeepLabV3(num_classes=35).to(DEVICE)
+model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LR)
 
