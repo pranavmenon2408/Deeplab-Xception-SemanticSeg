@@ -2,31 +2,31 @@ import os
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
+import time
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
 from model import DeepLabV3
-from utils import DEVICE, NUM_CLASSES
+from utils_IDD import DEVICE, NUM_CLASSES
 
-# Load the trained model
-model = DeepLabV3(num_classes=35).to(DEVICE)
+start_event=torch.cuda.Event(enable_timing=True)
+end_event=torch.cuda.Event(enable_timing=True)
+
+model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
 model.load_state_dict(torch.load('/home/pranav/deeplabv3_IDD.pth'))
 model.eval()
 
-# Transformations for the test image
+# Transformation for the test image
 transform = transforms.Compose([
-    transforms.Resize((540, 960)),
+    transforms.Resize((450, 800)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
+# Function to visualize predictions
 def visualize_prediction(image, mask, save_path=None):
-    # Convert the image and mask to numpy arrays
     image = image.permute(1, 2, 0).cpu().numpy()
-    print(image.shape)
-    mask = mask.cpu().numpy().astype(np.uint8)  # Ensure mask is uint8
-
-    # Create a color palette for the mask
+    mask = mask.cpu().numpy().astype(np.uint8)
     palette = np.array([
     [0, 0, 0],          # Class 0 (Background)
     [102, 102, 156],    # Class 1
@@ -62,54 +62,70 @@ def visualize_prediction(image, mask, save_path=None):
     [0, 255, 255],      # Class 31
     [64, 224, 208],     # Class 32
     [255, 20, 147],     # Class 33
-    [160, 82, 45]       # Class 34
+    [160, 82, 45],      # Class 34
+    [255, 165, 0],      # Class 35 (New)
+    [75, 0, 130],       # Class 36 (New)
+    [255, 255, 0],      # Class 37 (New)
+    [0, 128, 128],      # Class 38 (New)
+    [255, 105, 180],    # Class 39 (New)
+    [123, 104, 238],    # Class 40 (New)
+    [255, 69, 0],       # Class 41 (New)
+    [154, 205, 50],     # Class 42 (New)
+    [72, 209, 204]      # Class 43 (New)
 ], dtype=np.uint8)
 
     mask_colored = palette[mask]
-
-    # plt.figure(figsize=(10, 5))
-    # plt.subplot(1, 2, 1)
-    # plt.title('Input Image')
-    # plt.imshow(image)
-    # plt.axis('off')
-
-    # plt.subplot(1, 2, 2)
-    # plt.title('Predicted Mask')
-    # plt.imshow(mask_colored)
-    # plt.axis('off')
-
     if save_path:
         mask_colored_image = Image.fromarray(mask_colored)
         mask_colored_image.save(save_path)
-    
-    #plt.show()
 
-def predict(image_path, save_path=None):
-    # Load and preprocess the image
-    image = Image.open(image_path).convert('RGB')
-    input_image = transform(image).unsqueeze(0).to(DEVICE)
+# Function for batch-wise prediction
+def predict_batch(image_paths, output_paths):
+    batch_size = 64  # Adjust batch size as per your system's capability
 
     with torch.no_grad():
-        output = model(input_image)
-        output = F.interpolate(output, size=image.size[::-1], mode='bilinear', align_corners=True)
-        output = torch.argmax(output, dim=1).squeeze(0)
+        for i in range(0, len(image_paths), batch_size):
+            batch_images = []
+            batch_input_paths = []
+            for j in range(batch_size):
+                idx = i + j
+                if idx < len(image_paths):
+                    image_path = image_paths[idx]
+                    image = Image.open(image_path).convert('RGB')
+                    input_image = transform(image)
+                    batch_images.append(input_image)
+                    batch_input_paths.append(image_path)
 
-        # Debugging step: print unique values in the output mask
-        unique_values = torch.unique(output)
-        print(f"Unique values in the output mask: {unique_values}")
+            if len(batch_images) > 0:
+                batch_images = torch.stack(batch_images).to(DEVICE)
+                start_event.record()
+                output = model(batch_images)
+                end_event.record()
+                torch.cuda.synchronize()
+                elapsed_time = start_event.elapsed_time(end_event)/1000
+                print(f"Inference time for batch {i // batch_size}: {elapsed_time} seconds")
 
-    visualize_prediction(input_image.squeeze(0), output, save_path)
+                for j, image_path in enumerate(batch_input_paths):
+                    output_j = output[j].unsqueeze(0)
+                    output_j = F.interpolate(output_j, size=image.size[::-1], mode='bilinear', align_corners=True)
+                    output_j = torch.argmax(output_j, dim=1).squeeze(0)
+                    output_image_path = output_paths[i + j]
+                    visualize_prediction(batch_images[j], output_j, output_image_path)
 
+# Main function
 if __name__ == '__main__':
-    # test_img_dir = '/home/pranav/DeepLabV3_Xception/data/testing/image_2'
-    # test_mask_out_dir = '/home/pranav/DeepLabV3_Xception/data/testing/mask_result'
-    # for img in os.listdir(test_img_dir):
-    #     test_image_path = os.path.join(test_img_dir, img)
-    #     output_image_path = os.path.join(test_mask_out_dir, img)
+    test_img_dir = '/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/leftImg8bit/test'
+    test_mask_out_dir = '/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/mask/test'
+    
+    image_paths = []
+    output_paths = []
 
-    #     predict(test_image_path, output_image_path)
-    test_image_path="/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/leftImg8bit/test/200/frame0199_leftImg8bit.jpg"
-    output_image_path="/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/mask/test/200/frame0199_mask.png"
-    predict(test_image_path, output_image_path)
+    # Collect all image paths and corresponding output paths
+    for sub_dir in os.listdir(test_img_dir):
+        for img in os.listdir(os.path.join(test_img_dir, sub_dir)):
+            image_paths.append(os.path.join(test_img_dir, sub_dir, img))
+            output_paths.append(os.path.join(test_mask_out_dir, sub_dir, img))
+            os.makedirs(os.path.dirname(output_paths[-1]), exist_ok=True)
 
-   
+    # Perform batch-wise prediction
+    predict_batch(image_paths, output_paths)
