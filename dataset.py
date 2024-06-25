@@ -3,7 +3,6 @@ import torch
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
-import mask
 from torchvision import transforms
 
 TRAIN_IMG_DIR = '/home/pranav/DeepLabV3_Xception/data/training/image_2'
@@ -76,19 +75,17 @@ class IndianDrivigDataset(Dataset):
         mask_path = self.masks[idx]
 
         image = Image.open(img_path).convert("RGB")
-        masks = Image.open(mask_path).convert("RGB")
+        mask = Image.open(mask_path)
 
         if self.transform_img:
             image = self.transform_img(image)
 
         if self.transform_mask:
-            color_to_class={idx: mask.palette[idx].tolist() for idx in range(len(mask.palette))}
-            masks=rgb_to_class_pil(masks, color_to_class)
-            masks=self.transform_mask(masks)
+            mask=self.transform_mask(mask)
             
-        #print(torch.unique(masks))
+        #print(torch.unique(mask))
 
-        return image, masks
+        return image, mask
         
 
     
