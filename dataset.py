@@ -29,7 +29,7 @@ def rgb_to_class_pil(image, color_to_class):
     class_mask_np = np.zeros((image_np.shape[0], image_np.shape[1]), dtype=np.uint8)
     
     # Iterate over the color_to_class dictionary
-    for cls, rgb in color_to_class.items():
+    for rgb, cls in color_to_class.items():
         # Check where the RGB values match the current RGB tuple
         mask_equal = np.all(image_np == np.array(rgb), axis=-1)
         # Assign class index to corresponding locations in class_mask_np

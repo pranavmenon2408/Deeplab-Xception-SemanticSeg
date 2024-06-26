@@ -52,7 +52,7 @@ color_to_class = {(102, 102, 156): 0, (107, 142, 35): 1, (0, 0, 142): 2, (220, 2
 
 
 
-train_loader = get_dataloader(dataset.TRAIN_IMG_DIR, dataset.TRAIN_MASK_DIR, BATCH_SIZE,color_to_class, transform_img=train_img_transforms,transform_mask=train_mask_transforms, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY)
+train_loader = get_dataloader(dataset.TRAIN_IMG_DIR, dataset.TRAIN_MASK_DIR, BATCH_SIZE, color_to_class=color_to_class, transform_img=train_img_transforms,transform_mask=train_mask_transforms, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY)
 
 
 dataset_size = len(train_loader.dataset)
