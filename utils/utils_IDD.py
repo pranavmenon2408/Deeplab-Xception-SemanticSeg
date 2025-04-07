@@ -18,25 +18,27 @@ def calculate_accuracy(preds, labels):
     return accuracy
 
 
-INPUT_TRAIN_IMAGE_DIR="/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/leftImg8bit/train"
-INPUT_TRAIN_MASK_DIR="/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/mask/train"
+INPUT_TRAIN_IMAGE_DIR="/data/pranav/IDD_Segmentation/leftImg8bit/train"
+INPUT_TRAIN_MASK_DIR="/data/pranav/IDD_Segmentation/mask/train"
 
-INPUT_VAL_IMAGE_DIR="/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/leftImg8bit/val"
-INPUT_VAL_MASK_DIR="/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/mask/val"
+INPUT_VAL_IMAGE_DIR="/data/pranav/IDD_Segmentation/leftImg8bit/val"
+INPUT_VAL_MASK_DIR="/data/pranav/IDD_Segmentation/mask/val"
 
 
 
-LR=1e-4
+LR=1e-3
 DEVICE='cuda' if torch.cuda.is_available() else 'cpu'
-BATCH_SIZE=16
-NUM_EPOCHS=10
-NUM_CLASSES=43
+BATCH_SIZE=3
+NUM_EPOCHS=150
+NUM_CLASSES=42
 NUM_WORKERS=4
 PIN_MEMORY=True
 
+
+
 train_img_transforms =  transforms.Compose(
     [
-        transforms.Resize((450, 800)),
+        transforms.Resize((720, 1280)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
@@ -45,7 +47,7 @@ train_img_transforms =  transforms.Compose(
 
 train_mask_transforms =  transforms.Compose(
     [
-        transforms.Resize((450, 800)),
+        transforms.Resize((720, 1280), interpolation=Image.NEAREST),
         transforms.PILToTensor(),
     ]
 )
