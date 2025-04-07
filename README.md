@@ -15,8 +15,3 @@ DeepLab v3+ is a state-of-the-art semantic segmentation model that combines atro
 - **Backbone:** Aligned Xception
 - **ASPP Module:** Multi-scale context aggregation
 - **Decoder:** Upsampling with skip connections for fine spatial details
-
----
-
-## 📁 Project Structure
-
