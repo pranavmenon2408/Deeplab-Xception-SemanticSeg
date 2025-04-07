@@ -69,6 +69,7 @@ class IndianDrivigDataset(Dataset):
 
     def __len__(self):
         return len(self.images)
+        
     
     def __getitem__(self, idx):
         img_path = self.images[idx]

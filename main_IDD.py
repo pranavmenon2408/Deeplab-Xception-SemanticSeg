@@ -5,14 +5,16 @@ import torch.optim as optim
 from sklearn.metrics import precision_recall_fscore_support
 from torchmetrics import JaccardIndex
 from tqdm import tqdm
-from model import DeepLabV3
-from utils_IDD import train_loader, DEVICE, NUM_CLASSES, NUM_EPOCHS, LR, calculate_accuracy, val_loader
+from models.model import DeepLabV3
+from utils.utils_IDD import train_loader, DEVICE, NUM_CLASSES, NUM_EPOCHS, LR, calculate_accuracy, val_loader
 
 model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LR)
 
 iou=JaccardIndex(task='multiclass',num_classes=NUM_CLASSES, average="weighted").to(DEVICE)
+
+best_iou = 0.0
 
 
 
@@ -24,6 +26,10 @@ for epoch in range(NUM_EPOCHS):
         data, target = data.to(DEVICE), target.to(DEVICE)
         target=target.squeeze(1)
         target=target.long()
+        count_invalid_train = (target > 41).sum().item()
+        if count_invalid_train > 0:
+            print(f"Epoch {epoch + 1} | Batch {idx + 1}: Found {count_invalid_train} invalid values (>41) in training targets.")
+            target[target > 41] = 36
         assert target.max().item() < NUM_CLASSES, f"Target contains an invalid class index, {target.max().item()}"
         #print(target)
         optimizer.zero_grad()
@@ -48,6 +54,11 @@ for epoch in range(NUM_EPOCHS):
         for batch_idx, (images, masks) in enumerate(val_loader):
             images = images.to(DEVICE)
             masks = masks.to(DEVICE)
+
+            count_invalid_val = (masks > 41).sum().item()
+            if count_invalid_val > 0:
+                print(f"Epoch {epoch + 1} | Validation Batch {batch_idx + 1}: Found {count_invalid_val} invalid values (>41) in validation masks. Replacing them with 36.")
+                masks[masks > 41] = 36
             #print(masks)
             outputs = model(images)
             #print(outputs)
@@ -78,6 +89,10 @@ for epoch in range(NUM_EPOCHS):
     total_f1 /= total_batches
     
     print(f'Epoch [{epoch+1}/{NUM_EPOCHS}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}, Mean IOU: {total_iou:.4f}, Precision: {total_precision:.4f}, Recall: {total_recall:.4f}, F1 Score: {total_f1:.4f}')
+    if total_iou > best_iou:
+        best_iou = total_iou
+        torch.save(model.state_dict(), 'deeplabv3_IDD_best_again_2.pth')
+        print('Model Saved with Mean IOU: ', best_iou)
 
-torch.save(model.state_dict(), 'deeplabv3_IDD.pth')
+#torch.save(model.state_dict(), 'deeplabv3_IDD.pth')
 

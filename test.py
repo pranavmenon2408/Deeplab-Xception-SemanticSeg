@@ -6,22 +6,24 @@ import time
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
-from model import DeepLabV3
-from utils_IDD import DEVICE, NUM_CLASSES
+from models.model import DeepLabV3
+from utils.utils_IDD import DEVICE, NUM_CLASSES
 
 start_event=torch.cuda.Event(enable_timing=True)
 end_event=torch.cuda.Event(enable_timing=True)
 
 model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
-model.load_state_dict(torch.load('/home/pranav/deeplabv3_IDD.pth'))
+model.load_state_dict(torch.load('/home/pranav/DeepLabV3_Xception/deeplabv3_IDD_best_again_2.pth', weights_only=True))
 model.eval()
 
-# Transformation for the test image
+# Updated transform pipeline
 transform = transforms.Compose([
-    transforms.Resize((450, 800)),
+    transforms.Resize((720, 1280)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
+
 
 # Function to visualize predictions
 def visualize_prediction(image, mask, save_path=None):
@@ -81,7 +83,7 @@ def visualize_prediction(image, mask, save_path=None):
 
 # Function for batch-wise prediction
 def predict_batch(image_paths, output_paths):
-    batch_size = 64  # Adjust batch size as per your system's capability
+    batch_size = 1  # Adjust batch size as per your system's capability
 
     with torch.no_grad():
         for i in range(0, len(image_paths), batch_size):
@@ -107,15 +109,15 @@ def predict_batch(image_paths, output_paths):
 
                 for j, image_path in enumerate(batch_input_paths):
                     output_j = output[j].unsqueeze(0)
-                    output_j = F.interpolate(output_j, size=image.size[::-1], mode='bilinear', align_corners=True)
+                    output_j = F.interpolate(output_j, size= image.size[::-1], mode='bilinear', align_corners=True)
                     output_j = torch.argmax(output_j, dim=1).squeeze(0)
                     output_image_path = output_paths[i + j]
                     visualize_prediction(batch_images[j], output_j, output_image_path)
 
 # Main function
 if __name__ == '__main__':
-    test_img_dir = '/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/leftImg8bit/test'
-    test_mask_out_dir = '/home/pranav/DeepLabV3_Xception/idd-20k-II/idd20kII/mask/test'
+    test_img_dir = '/data/pranav/IDD_Segmentation/leftImg8bit/val'
+    test_mask_out_dir = '/data/pranav/IDD_Segmentation/mask/test'
     
     image_paths = []
     output_paths = []
