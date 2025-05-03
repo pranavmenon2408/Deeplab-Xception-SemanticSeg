@@ -79,16 +79,28 @@ Output segmented images will be saved in the specified output folder.
 
 ## 🖼️ Sample Results
 
-Left: Input Image | Right: Predicted Segmentation Map
+Left: Input Image &nbsp;&nbsp;|&nbsp;&nbsp; Right: Predicted Segmentation Map
 
 ---
 
-### Example 1
-![Input](https://github.com/user-attachments/assets/a81beab2-c58e-43b6-88dd-7471a51825f5)
-![Output](https://github.com/user-attachments/assets/cd9e67d1-5ec6-4fdb-8119-8a62feb48384)
+<table>
+  <tr>
+    <td><strong>Example 1 - Input</strong></td>
+    <td><strong>Example 1 - Output</strong></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/a81beab2-c58e-43b6-88dd-7471a51825f5" width="300"/></td>
+    <td><img src="https://github.com/user-attachments/assets/cd9e67d1-5ec6-4fdb-8119-8a62feb48384" width="300"/></td>
+  </tr>
+  <tr>
+    <td><strong>Example 2 - Input</strong></td>
+    <td><strong>Example 2 - Output</strong></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/d3435f5e-6098-4351-a438-d4887e98ca2f" width="300"/></td>
+    <td><img src="https://github.com/user-attachments/assets/eb6a5495-16b7-4c05-9be9-b7650e0d35b1" width="300"/></td>
+  </tr>
+</table>
 
-### Example 2
-![Input](https://github.com/user-attachments/assets/d3435f5e-6098-4351-a438-d4887e98ca2f)
-![Output](https://github.com/user-attachments/assets/eb6a5495-16b7-4c05-9be9-b7650e0d35b1)
 
 
