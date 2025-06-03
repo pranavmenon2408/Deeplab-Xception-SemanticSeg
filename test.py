@@ -6,14 +6,16 @@ import time
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
+from models.model_light_2 import LiteDeepLabV3
 from models.model import DeepLabV3
 from utils.utils_IDD import DEVICE, NUM_CLASSES
+
 
 start_event=torch.cuda.Event(enable_timing=True)
 end_event=torch.cuda.Event(enable_timing=True)
 
-model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
-model.load_state_dict(torch.load('/home/pranav/DeepLabV3_Xception/deeplabv3_IDD_best_again_2.pth', weights_only=True))
+model = LiteDeepLabV3(num_classes=NUM_CLASSES, use_hierarchical_aspp=True).to(DEVICE)
+model.load_state_dict(torch.load('/home/pranav/DeepLabV3_Xception/deeplabv3_IDD_best_CCAR_and_ACDSC_3.pth'))
 model.eval()
 
 # Updated transform pipeline
@@ -30,9 +32,9 @@ def visualize_prediction(image, mask, save_path=None):
     image = image.permute(1, 2, 0).cpu().numpy()
     mask = mask.cpu().numpy().astype(np.uint8)
     palette = np.array([
-    [0, 0, 0],          # Class 0 (Background)
-    [102, 102, 156],    # Class 1
-    [107, 142, 35],     # Class 2
+    [0, 255, 0],          # Class 0 (Background)
+    [255, 0, 0],    # Class 1
+    [0, 0, 255],     # Class 2
     [0, 0, 142],        # Class 3
     [220, 220, 0],      # Class 4
     [70, 130, 180],     # Class 5
@@ -83,7 +85,7 @@ def visualize_prediction(image, mask, save_path=None):
 
 # Function for batch-wise prediction
 def predict_batch(image_paths, output_paths):
-    batch_size = 1  # Adjust batch size as per your system's capability
+    batch_size = 4  # Adjust batch size as per your system's capability
 
     with torch.no_grad():
         for i in range(0, len(image_paths), batch_size):

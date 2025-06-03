@@ -4,15 +4,15 @@ import numpy as np
 import skimage
 import json
 
-INPUT_TRAIN_IMG_DIR="/data/pranav/IDD_Segmentation/leftImg8bit/train"
-INPUT_TRAIN_JSON_DIR="/data/pranav/IDD_Segmentation/gtFine/train"
-OUTPUT_TRAIN_MASK_DIR="/data/pranav/IDD_Segmentation/mask/train"
+INPUT_TRAIN_IMG_DIR="/data/pranav/idd20kII/leftImg8bit/train"
+INPUT_TRAIN_JSON_DIR="/data/pranav/idd20kII/gtFine/train"
+OUTPUT_TRAIN_MASK_DIR ="/data/pranav/idd20kII/mask/train"
 
-INPUT_VAL_JSON_DIR="/data/pranav/IDD_Segmentation/gtFine/val"
-OUTPUT_VAL_MASK_DIR="/data/pranav/IDD_Segmentation/mask/val"
+INPUT_VAL_JSON_DIR="/data/pranav/idd20kII/gtFine/val"
+OUTPUT_VAL_MASK_DIR="/data/pranav/idd20kII/mask/val"
 
 
-labels={'road': 1, 'sky': 2, 'drivable fallback': 3, 'vehicle fallback': 4, 'non-drivable fallback': 5, 'curb': 6, 'obs-str-bar-fallback': 7, 'vegetation': 8, 'pole': 9, 'billboard': 10, 'building': 11, 'truck': 12, 'wall': 13, 'rider': 14, 'motorcycle': 15, 'autorickshaw': 16, 'car': 17, 'person': 18, 'fence': 19, 'traffic sign': 20, 'rectification border': 21, 'bicycle': 22, 'bus': 23, 'fallback background': 24, 'polegroup': 25, 'sidewalk': 26, 'bridge': 27, 'animal': 28, 'traffic light': 29, 'out of roi': 30, 'caravan': 31, 'guard rail': 32, 'rail track': 33, 'trailer': 34, 'parking': 35, 'unlabeled': 36, 'tunnel': 37, 'train': 38, 'ego vehicle': 39, 'ground': 40, 'license plate': 41}
+labels={'road': 0, 'sky': 25, 'drivable fallback': 1, 'vehicle fallback': 12, 'non-drivable fallback': 3, 'curb': 13, 'obs-str-bar-fallback': 21, 'vegetation': 24, 'pole': 20, 'billboard': 17, 'building': 22, 'truck': 10, 'wall': 14, 'rider': 5, 'motorcycle': 6, 'autorickshaw': 8, 'car': 9, 'person': 4, 'fence': 15, 'traffic sign': 18, 'rectification border': 2, 'bicycle': 7, 'bus': 11, 'fallback background': 25, 'polegroup': 20, 'sidewalk': 2, 'bridge': 23, 'animal': 4, 'traffic light': 19, 'out of roi': 26, 'caravan': 12, 'guard rail': 16, 'rail track': 3, 'trailer': 12, 'parking': 1, 'unlabeled': 26, 'tunnel': 23, 'train': 26, 'ego vehicle': 9, 'ground': 2, 'license plate': 26}
 
 
 

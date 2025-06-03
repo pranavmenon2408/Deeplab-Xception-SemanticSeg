@@ -148,3 +148,6 @@ Epoch [147/150], Train Loss: 0.1313, Val Loss: 1.0979, Val Accuracy: 0.8558, Mea
 Epoch [148/150], Train Loss: 0.1320, Val Loss: 1.1099, Val Accuracy: 0.8565, Mean IOU: 0.7890, Precision: 0.8766, Recall: 0.8565, F1 Score: 0.8523
 Epoch [149/150], Train Loss: 0.1317, Val Loss: 1.1090, Val Accuracy: 0.8518, Mean IOU: 0.7843, Precision: 0.8748, Recall: 0.8518, F1 Score: 0.8486
 Epoch [150/150], Train Loss: 0.1325, Val Loss: 1.0962, Val Accuracy: 0.8567, Mean IOU: 0.7897, Precision: 0.8768, Recall: 0.8567, F1 Score: 0.8528
+
+Epoch [44/50], Train Loss: 0.2140, Val Loss: 0.6472, Val Accuracy: 0.8588, Mean IOU: 0.7921, Precision: 0.8807, Recall: 0.8588, F1 Score: 0.8541
+Model Saved with Mean IOU:  0.7920823700566539

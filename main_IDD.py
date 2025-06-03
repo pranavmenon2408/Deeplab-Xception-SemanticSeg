@@ -1,20 +1,27 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 import torch.optim as optim
 from sklearn.metrics import precision_recall_fscore_support
 from torchmetrics import JaccardIndex
 from tqdm import tqdm
 from models.model import DeepLabV3
+from models.model_light_2 import LiteDeepLabV3
 from utils.utils_IDD import train_loader, DEVICE, NUM_CLASSES, NUM_EPOCHS, LR, calculate_accuracy, val_loader
 
-model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
+model = LiteDeepLabV3(num_classes=NUM_CLASSES, output_stride=16, use_hierarchical_aspp=True).to(DEVICE)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LR)
 
 iou=JaccardIndex(task='multiclass',num_classes=NUM_CLASSES, average="weighted").to(DEVICE)
 
 best_iou = 0.0
+
+class_precision_sum = np.zeros(NUM_CLASSES)
+class_recall_sum = np.zeros(NUM_CLASSES)
+class_f1_sum = np.zeros(NUM_CLASSES)
+class_counts = np.zeros(NUM_CLASSES)
 
 
 
@@ -26,10 +33,10 @@ for epoch in range(NUM_EPOCHS):
         data, target = data.to(DEVICE), target.to(DEVICE)
         target=target.squeeze(1)
         target=target.long()
-        count_invalid_train = (target > 41).sum().item()
+        count_invalid_train = (target > 26).sum().item()
         if count_invalid_train > 0:
-            print(f"Epoch {epoch + 1} | Batch {idx + 1}: Found {count_invalid_train} invalid values (>41) in training targets.")
-            target[target > 41] = 36
+            print(f"Epoch {epoch + 1} | Batch {idx + 1}: Found {count_invalid_train} invalid values (>26) in training targets.")
+            target[target > 26] = 26
         assert target.max().item() < NUM_CLASSES, f"Target contains an invalid class index, {target.max().item()}"
         #print(target)
         optimizer.zero_grad()
@@ -55,10 +62,10 @@ for epoch in range(NUM_EPOCHS):
             images = images.to(DEVICE)
             masks = masks.to(DEVICE)
 
-            count_invalid_val = (masks > 41).sum().item()
+            count_invalid_val = (masks > 26).sum().item()
             if count_invalid_val > 0:
-                print(f"Epoch {epoch + 1} | Validation Batch {batch_idx + 1}: Found {count_invalid_val} invalid values (>41) in validation masks. Replacing them with 36.")
-                masks[masks > 41] = 36
+                print(f"Epoch {epoch + 1} | Validation Batch {batch_idx + 1}: Found {count_invalid_val} invalid values (>26) in validation masks. Replacing them with 26.")
+                masks[masks > 26] = 26
             #print(masks)
             outputs = model(images)
             #print(outputs)
@@ -79,6 +86,22 @@ for epoch in range(NUM_EPOCHS):
             total_recall += recall
             total_f1 += f1
 
+            precision_c, recall_c, f1_c, support_c = precision_recall_fscore_support(
+                true_labels.flatten(), predicted_labels.flatten(),
+                labels=np.arange(NUM_CLASSES), average=None, zero_division=0
+            )
+
+            # Accumulate class-wise metrics
+            class_precision_sum += precision_c
+            class_recall_sum += recall_c
+            class_f1_sum += f1_c
+            class_counts += (support_c > 0)  # count only if class appeared
+
+
+    class_precision_avg = np.divide(class_precision_sum, class_counts, where=class_counts!=0)
+    class_recall_avg = np.divide(class_recall_sum, class_counts, where=class_counts!=0)
+    class_f1_avg = np.divide(class_f1_sum, class_counts, where=class_counts!=0)
+
 
     train_loss /= len(train_loader)
     val_loss /= len(val_loader)
@@ -87,11 +110,15 @@ for epoch in range(NUM_EPOCHS):
     total_precision /= total_batches
     total_recall /= total_batches
     total_f1 /= total_batches
+
+    print("\nClass-wise Precision/Recall/F1:")
+    for i in range(NUM_CLASSES):
+        print(f"Class {i:2}: Precision: {class_precision_avg[i]:.4f}, Recall: {class_recall_avg[i]:.4f}, F1: {class_f1_avg[i]:.4f}")
     
     print(f'Epoch [{epoch+1}/{NUM_EPOCHS}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}, Mean IOU: {total_iou:.4f}, Precision: {total_precision:.4f}, Recall: {total_recall:.4f}, F1 Score: {total_f1:.4f}')
     if total_iou > best_iou:
         best_iou = total_iou
-        torch.save(model.state_dict(), 'deeplabv3_IDD_best_again_2.pth')
+        torch.save(model.state_dict(), 'deeplabv3_IDD_best_CCAR_and_ACDSC_3.pth')
         print('Model Saved with Mean IOU: ', best_iou)
 
 #torch.save(model.state_dict(), 'deeplabv3_IDD.pth')

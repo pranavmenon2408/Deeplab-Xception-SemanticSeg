@@ -1,2 +1,7 @@
 deeplabv3_IDD_best_again_2.pth
 deeplabv3_IDD_best.pth
+deeplabv3_IDD_best_CCAR_1.pth
+deeplabv3_IDD_best_CCAR_and_ACDSC_1.pth
+deeplabv3_IDD_best_CCAR_and_ACDSC_2.pth
+deeplabv3_IDD_best_CCAR_and_ACDSC_3.pth
+nohup.out
