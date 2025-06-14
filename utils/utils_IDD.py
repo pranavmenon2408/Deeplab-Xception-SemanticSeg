@@ -18,6 +18,12 @@ def calculate_accuracy(preds, labels):
     return accuracy
 
 
+# INPUT_TRAIN_IMAGE_DIR="/data/pranav/idd20kII/leftImg8bit/train"
+# INPUT_TRAIN_MASK_DIR="/data/pranav/idd20kII/mask/train"
+
+# INPUT_VAL_IMAGE_DIR="/data/pranav/idd20kII/leftImg8bit/val"
+# INPUT_VAL_MASK_DIR="/data/pranav/idd20kII/mask/val"
+
 INPUT_TRAIN_IMAGE_DIR="/data/pranav/IDD_Segmentation/leftImg8bit/train"
 INPUT_TRAIN_MASK_DIR="/data/pranav/IDD_Segmentation/mask_lane/train"
 
@@ -28,8 +34,8 @@ INPUT_VAL_MASK_DIR="/data/pranav/IDD_Segmentation/mask_lane/val"
 
 LR=1e-3
 DEVICE='cuda' if torch.cuda.is_available() else 'cpu'
-BATCH_SIZE=5
-NUM_EPOCHS=50
+BATCH_SIZE=3
+NUM_EPOCHS=100
 NUM_CLASSES=27
 NUM_WORKERS=4
 PIN_MEMORY=True

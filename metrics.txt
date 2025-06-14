@@ -151,3 +151,25 @@ Epoch [150/150], Train Loss: 0.1325, Val Loss: 1.0962, Val Accuracy: 0.8567, Mea
 
 Epoch [44/50], Train Loss: 0.2140, Val Loss: 0.6472, Val Accuracy: 0.8588, Mean IOU: 0.7921, Precision: 0.8807, Recall: 0.8588, F1 Score: 0.8541
 Model Saved with Mean IOU:  0.7920823700566539
+
+IDD-20K-II
+LiteDeepLabV3:
+Epoch [27/50], Train Loss: 0.3059, Val Loss: 0.4837, Val Accuracy: 0.8622, Mean IOU: 0.7948, Precision: 0.8855, Recall: 0.8622, F1 Score: 0.8583
+Model Saved with Mean IOU:  0.7947944856085484
+
+DeeplabV3+:
+Epoch [49/50], Train Loss: 0.1547, Val Loss: 0.7050, Val Accuracy: 0.8633, Mean IOU: 0.7977, Precision: 0.8846, Recall: 0.8633, F1 Score: 0.8608
+Model Saved with Mean IOU:  0.7977126281690824
+
+CCSO_Net:
+Epoch [34/50], Train Loss: 0.1909, Val Loss: 0.5782, Val Accuracy: 0.8680, Mean IOU: 0.8023, Precision: 0.8905, Recall: 0.8680, F1 Score: 0.8653
+Model Saved with Mean IOU:  0.8022526749502427
+
+IDD-2OK-I
+LiteDeepLabV3:
+Epoch [21/100], Train Loss: 0.2200, Val Loss: 0.6193, Val Accuracy: 0.8644, Mean IOU: 0.7998, Precision: 0.8869, Recall: 0.8644, F1 Score: 0.8602
+Best model saved with Mean IOU:  0.7998259418419013
+
+CCSO_Net:
+Epoch [27/100], Train Loss: 0.2109, Val Loss: 0.5753, Val Accuracy: 0.8678, Mean IOU: 0.8033, Precision: 0.8906, Recall: 0.8678, F1 Score: 0.8637
+Best model saved with Mean IOU:  0.8032630565030373

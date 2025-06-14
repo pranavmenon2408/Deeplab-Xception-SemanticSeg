@@ -3,6 +3,113 @@ import torch.nn as nn
 from torch.nn import functional as F
 import time
 
+class LSCFEM(nn.Module):
+    """Long-Short Configurable Context Feature Enhancement Module"""
+    def __init__(self, in_channels, reduction=4):
+        super().__init__()
+        self.channel_reduction = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels//reduction, 1, bias=False),
+            nn.BatchNorm2d(in_channels//reduction),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Short-range context branch
+        self.short_ctx = nn.Sequential(
+            nn.Conv2d(in_channels//reduction, in_channels//reduction, 3, 
+                     padding=1, groups=in_channels//reduction, bias=False),
+            nn.BatchNorm2d(in_channels//reduction),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Long-range context branch
+        self.long_ctx = nn.Sequential(
+            nn.Conv2d(in_channels//reduction, in_channels//reduction, 3,
+                     padding=2, dilation=2, groups=in_channels//reduction, bias=False),
+            nn.BatchNorm2d(in_channels//reduction),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.fusion = nn.Sequential(
+            nn.Conv2d(2*(in_channels//reduction), in_channels, 1, bias=False),
+            nn.BatchNorm2d(in_channels),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        reduced = self.channel_reduction(x)
+        short = self.short_ctx(reduced)
+        long = self.long_ctx(reduced)
+        combined = torch.cat([short, long], dim=1)
+        attention = self.fusion(combined)
+        return x * attention + x
+
+class MultiLevelFeatureFusion(nn.Module):
+    """Enhanced feature fusion with multiple low-level feature extraction points"""
+    def __init__(self, backbone_channels=[96, 192, 384], aspp_channels=64):
+        super().__init__()
+        
+        # Multiple low-level feature processors
+        self.low_level_processors = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(channels, 32, 1, bias=False),
+                nn.BatchNorm2d(32),
+                nn.ReLU(inplace=True)
+            ) for channels in backbone_channels
+        ])
+        
+        # Cross-scale attention for feature selection - FIXED
+        self.cross_scale_attention = nn.Sequential(
+            nn.Conv2d(32 * len(backbone_channels), 32 * len(backbone_channels), 1, bias=False),  # Match input channels
+            nn.BatchNorm2d(32 * len(backbone_channels)),
+            nn.Sigmoid()
+        )
+        
+        # Channel reduction after attention
+        self.channel_reduction = nn.Sequential(
+            nn.Conv2d(32 * len(backbone_channels), 32, 1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Feature pyramid fusion with LSCFEM
+        self.pyramid_fusion = nn.Sequential(
+            nn.Conv2d(32 + aspp_channels, 128, 3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            LSCFEM(128),  # Use existing LSCFEM for context enhancement
+            nn.Dropout(0.1)
+        )
+        
+    def forward(self, high_features, low_level_features_list):
+        # Process multiple low-level features
+        processed_low = []
+        target_size = low_level_features_list[0].shape[2:]
+        
+        for i, (processor, features) in enumerate(zip(self.low_level_processors, low_level_features_list)):
+            processed = processor(features)
+            if processed.shape[2:] != target_size:
+                processed = F.interpolate(processed, size=target_size, mode='bilinear', align_corners=True)
+            processed_low.append(processed)
+        
+        # Cross-scale attention - FIXED
+        combined_low = torch.cat(processed_low, dim=1)  # Shape: [B, 96, H, W]
+        attention_weights = self.cross_scale_attention(combined_low)  # Shape: [B, 96, H, W]
+        attended_low = combined_low * attention_weights  # Now dimensions match
+        
+        # Reduce channels back to 32
+        attended_low = self.channel_reduction(attended_low)  # Shape: [B, 32, H, W]
+        
+        # Upsample high-level features
+        high_upsampled = F.interpolate(high_features, size=target_size, mode='bilinear', align_corners=True)
+        
+        # Final fusion
+        fused = torch.cat([attended_low, high_upsampled], dim=1)
+        output = self.pyramid_fusion(fused)
+        
+        return output
+
+
+
 class CCAR(nn.Module):
     """
     Optimized Conditional Channel-wise Attention Routing (CCAR) module
@@ -117,7 +224,7 @@ class AdaptiveContextDSConv(nn.Module):
         
         # Pointwise convolution with group convolution for parameter efficiency
         groups = 1 if in_channels < 32 or out_channels < 32 else min(4, min(in_channels, out_channels) // 16)
-        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, groups=groups, bias=False)
+        self.pointwise = nn.Conv2d(in_channels, out_channels, 1, groups=4, bias=False)
         
         # Normalization and activation
         self.bn = nn.BatchNorm2d(out_channels)
@@ -206,7 +313,7 @@ class Block(nn.Module):
 
 class LiteXception(nn.Module):
     """
-    Lighter Xception backbone with reduced channels
+    Lighter Xception backbone with multiple feature extraction points
     """
     def __init__(self, output_stride=16, in_channels=3):
         super(LiteXception, self).__init__()
@@ -216,25 +323,29 @@ class LiteXception(nn.Module):
             b3_s, mf_d, ef_d = 1, 2, (2, 4)
 
         # Initial convolutions
-        self.conv1 = nn.Conv2d(3, 24, 3, 2, padding=1, bias=False)  # Reduced from 32
+        self.conv1 = nn.Conv2d(3, 24, 3, 2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(24)
         self.relu = nn.ReLU(inplace=False)
-        self.conv2 = nn.Conv2d(24, 48, 3, 1, padding=1, bias=False)  # Reduced from 64
+        self.conv2 = nn.Conv2d(24, 48, 3, 1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(48)
 
         # Entry flow blocks with reduced channels
-        self.block1 = Block(48, 96, stride=2, dilation=1, use_first_relu=False)  # Reduced from 128
-        self.block2 = Block(96, 192, stride=2, dilation=1)  # Reduced from 256
-        self.block3 = Block(192, 384, stride=b3_s, dilation=1)  # Reduced from 728
+        self.block1 = Block(48, 96, stride=2, dilation=1, use_first_relu=False)
+        self.ccar1 = CCAR(96)
+        self.block2 = Block(96, 192, stride=2, dilation=1)
+        self.ccar2 = CCAR(192)
+        self.block3 = Block(192, 384, stride=b3_s, dilation=1)
+        self.ccar3 = CCAR(384)
 
-        # Middle flow - reduced number of blocks and channels
+        # Middle flow
         self.midflow = nn.Sequential(
-            *[Block(384, 384, stride=1, dilation=mf_d) for _ in range(8)]  # Reduced from 16 blocks and 728 channels
+            *[Block(384, 384, stride=1, dilation=mf_d) for _ in range(4)]
         )
 
+        self.ccar_midflow = CCAR(384)
+        
         # Exit flow
-        self.block4 = Block(384, 512, stride=1, dilation=ef_d[0], exit_flow=True)  # Reduced from 1024
-
+        self.block4 = Block(384, 512, stride=1, dilation=ef_d[0], exit_flow=True)
         # Final separable convolutions
         self.conv3 = AdaptiveContextDSConv(512, 768, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]])  
         self.bn3 = nn.BatchNorm2d(768)
@@ -242,6 +353,7 @@ class LiteXception(nn.Module):
         self.bn4 = nn.BatchNorm2d(768)
         self.conv5 = AdaptiveContextDSConv(768, 1024, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]]) 
         self.bn5 = nn.BatchNorm2d(1024)
+        self.ccar_final = CCAR(1024)
     
     def forward(self, x):
         x = self.conv1(x)
@@ -249,14 +361,24 @@ class LiteXception(nn.Module):
         x = self.relu(x)
         x = self.conv2(x)
         x = self.bn2(x)
+        
+        # Extract multiple low-level features
         x = self.block1(x)
-        low_level_features = x
+        x = self.ccar1(x)
+        low_level_1 = x  # 96 channels
+        
         x = F.relu(x)
         x = self.block2(x)
+        x = self.ccar2(x)
+        low_level_2 = x  # 192 channels
+        
         x = self.block3(x)
+        x = self.ccar3(x)
+        low_level_3 = x  # 384 channels
 
         # Middle flow
         x = self.midflow(x)
+        x = self.ccar_midflow(x)
 
         # Exit flow
         x = self.block4(x)
@@ -272,9 +394,102 @@ class LiteXception(nn.Module):
         x = self.conv5(x)
         x = self.bn5(x)
         x = self.relu(x)
+        x = self.ccar_final(x)
 
-        return x, low_level_features
+        return x, [low_level_1, low_level_2, low_level_3]
 
+
+class HierarchicalMSASPP(nn.Module):
+    """
+    Multi-Scale ASPP with hierarchical feature aggregation
+    """
+    def __init__(self, in_channels, output_stride=16):
+        super(HierarchicalMSASPP, self).__init__()
+        
+        if output_stride == 16:
+            dilations = [1, 3, 6, 9]  # Smaller, more fine-grained dilations
+        else:
+            dilations = [1, 6, 12, 18]
+        
+        reduced_channels = 64
+        
+        # Multi-scale branches with different kernel sizes
+        self.ms_branches = nn.ModuleList()
+        kernel_sizes = [1, 3, 5, 7]
+        
+        for i, (dil, ks) in enumerate(zip(dilations, kernel_sizes)):
+            if ks == 1:
+                branch = nn.Sequential(
+                    nn.Conv2d(in_channels, reduced_channels, 1, bias=False),
+                    nn.BatchNorm2d(reduced_channels),
+                    nn.ReLU(inplace=True)
+                )
+            else:
+                padding = (ks // 2) * dil
+                branch = nn.Sequential(
+                    # Depthwise separable with multi-scale
+                    nn.Conv2d(in_channels, in_channels, ks, padding=padding, 
+                             dilation=dil, groups=in_channels, bias=False),
+                    nn.Conv2d(in_channels, reduced_channels, 1, bias=False),
+                    nn.BatchNorm2d(reduced_channels),
+                    nn.ReLU(inplace=True)
+                )
+            self.ms_branches.append(branch)
+        
+        # Hierarchical aggregation - combine features at different levels
+        self.level1_fusion = nn.Conv2d(reduced_channels * 2, reduced_channels, 1, bias=False)
+        self.level2_fusion = nn.Conv2d(reduced_channels * 2, reduced_channels, 1, bias=False)
+        
+        # Global context with squeeze and excitation
+        self.global_context = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(in_channels, reduced_channels // 4, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(reduced_channels // 4, reduced_channels, 1),
+            nn.Sigmoid()
+        )
+        
+        # Final fusion
+        self.final_conv = nn.Sequential(
+            nn.Conv2d(reduced_channels * 3, reduced_channels, 1, bias=False),
+            nn.BatchNorm2d(reduced_channels),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2)
+        )
+
+        
+        # Add CCAR for enhanced attention
+        self.ccar = CCAR(reduced_channels)
+    
+    def forward(self, x):
+        # Extract multi-scale features
+        ms_features = [branch(x) for branch in self.ms_branches]
+        
+        # Hierarchical aggregation
+        # Level 1: Combine fine-scale features (1x1 and 3x3)
+        level1 = self.level1_fusion(torch.cat([ms_features[0], ms_features[1]], dim=1))
+        
+        # Level 2: Combine medium-scale features (5x5 and 7x7)  
+        level2 = self.level2_fusion(torch.cat([ms_features[2], ms_features[3]], dim=1))
+        
+        # Global context
+        global_ctx = self.global_context(x)
+        global_features = level1 * global_ctx + level2 * (1 - global_ctx)
+        
+        # Interpolate global features to match spatial dimensions
+        global_features = F.interpolate(global_features, size=x.shape[2:], 
+                                      mode='bilinear', align_corners=True)
+        
+        # Final fusion
+        final_features = torch.cat([level1, level2, global_features], dim=1)
+        output = self.final_conv(final_features)
+        
+        # Apply CCAR attention
+        output = self.ccar(output)
+        
+        return output
+
+# Keep the old ASPP for backward compatibility
 class Asppbranch(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation):
         super(Asppbranch, self).__init__()
@@ -303,7 +518,7 @@ class ASPP(nn.Module):
         self.branch3 = Asppbranch(in_channels, reduced_channels, 3, dilations[2])
         self.branch4 = Asppbranch(in_channels, reduced_channels, 3, dilations[3])
 
-        self.ccar = CCAR(reduced_channels)
+        #self.ccar = CCAR(reduced_channels)
 
         self.avgpool = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
@@ -331,14 +546,14 @@ class ASPP(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.dropout(x)
-        x = self.ccar(x)
+        #x = self.ccar(x)
         return x
     
 class Decoder(nn.Module):
-    def __init__(self, low_level_channels, num_classes):
+    def __init__(self, low_level_channels, num_classes, aspp_channels=64):
         super(Decoder, self).__init__()
-        # Reduced channel count
-        aspp_channels = 128  # Reduced from 256
+        # Updated for HierarchicalMSASPP output channels
+        #aspp_channels = 64  # Updated to match HierarchicalMSASPP output
         
         self.conv1 = nn.Conv2d(low_level_channels, 32, 1, bias=False)  # Reduced from 48
         self.bn1 = nn.BatchNorm2d(32)
@@ -366,20 +581,77 @@ class Decoder(nn.Module):
         x = self.last_conv(x)
         return x
     
+class EnhancedDecoder(nn.Module):
+    def __init__(self, backbone_channels=[96, 192, 384], num_classes=19, aspp_channels=64):
+        super().__init__()
+        
+        # Multi-level feature fusion
+        self.feature_fusion = MultiLevelFeatureFusion(backbone_channels, aspp_channels)
+        
+        # Keep existing CCAR for enhanced attention
+        self.ccar_decoder = CCAR(128)
+        
+        # Final classification layers
+        self.last_conv = nn.Sequential(
+            nn.Conv2d(128, 128, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+            nn.Conv2d(128, num_classes, 1, stride=1),
+        )
+
+    def forward(self, high_features, low_level_features_list):
+        # Multi-level feature fusion
+        fused = self.feature_fusion(high_features, low_level_features_list)
+        
+        # Apply CCAR attention
+        fused = self.ccar_decoder(fused)
+        
+        # Final classification
+        output = self.last_conv(fused)
+        
+        return output
+
+    
 class LiteDeepLabV3(nn.Module):
-    def __init__(self, num_classes=19, output_stride=16):
+    def __init__(self, num_classes=19, output_stride=16, use_hierarchical_aspp=True):
         super(LiteDeepLabV3, self).__init__()
         self.xception = LiteXception(output_stride)
-        self.aspp = ASPP(1024, output_stride)  # Reduced from 2048
-        self.decoder = Decoder(96, num_classes)  # Reduced from 128
+        
+        # Keep existing HierarchicalMSASPP and CCAR intact
+        if use_hierarchical_aspp:
+            self.aspp = HierarchicalMSASPP(1024, output_stride)
+            # Use enhanced decoder with multi-level fusion
+            self.decoder = EnhancedDecoder([96, 192, 384], num_classes, aspp_channels=64)
+        else:
+            self.aspp = ASPP(1024, output_stride)
+            # Fall back to original decoder for backward compatibility
+            self.decoder = Decoder(96, num_classes, aspp_channels=128)
 
     def forward(self, x):
         H, W = x.size(2), x.size(3)
-        x, low_level_features = self.xception(x)
-        x = self.aspp(x)
-        x = self.decoder(x, low_level_features)
-        x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True)
-        return x
+        
+        # Extract features with multiple low-level extraction points
+        backbone_features, low_level_features_list = self.xception(x)
+        
+        # Apply HierarchicalMSASPP (keeping intact)
+        aspp_features = self.aspp(backbone_features)
+        
+        # Enhanced decoder with multi-level fusion
+        if hasattr(self.decoder, 'feature_fusion'):
+            # Use enhanced decoder
+            output = self.decoder(aspp_features, low_level_features_list)
+        else:
+            # Use original decoder (backward compatibility)
+            output = self.decoder(aspp_features, low_level_features_list[0])
+        
+        # Final upsampling
+        output = F.interpolate(output, size=(H, W), mode='bilinear', align_corners=True)
+        
+        return output
+
+    
+from thop import profile
 
 def main():
     # Set random seed for reproducibility
@@ -392,134 +664,70 @@ def main():
     # Create a random input tensor (batch_size, channels, height, width)
     batch_size = 1
     input_channels = 3
-    input_height = 256
-    input_width = 256
+    input_height = 720
+    input_width = 1280
     num_classes = 26
     
     # Create random input tensor
     x = torch.randn(batch_size, input_channels, input_height, input_width).to(device)
     print(f"Input tensor shape: {x.shape}")
     
-    # Initialize both the original and lite models
-    model_original = DeepLabV3(num_classes=num_classes, output_stride=16).to(device)
-    model_lite = LiteDeepLabV3(num_classes=num_classes, output_stride=16).to(device)
+    # Initialize models with both ASPP variants
+    model_original_aspp = LiteDeepLabV3(num_classes=num_classes, output_stride=16, use_hierarchical_aspp=False).to(device)
+    model_hierarchical_aspp = LiteDeepLabV3(num_classes=num_classes, output_stride=16, use_hierarchical_aspp=True).to(device)
     
     # Set models to evaluation mode
-    model_original.eval()
-    model_lite.eval()
+    model_original_aspp.eval()
+    model_hierarchical_aspp.eval()
     
     # Print model summaries
-    original_params = sum(p.numel() for p in model_original.parameters())
-    lite_params = sum(p.numel() for p in model_lite.parameters())
+    original_params = sum(p.numel() for p in model_original_aspp.parameters())
+    hierarchical_params = sum(p.numel() for p in model_hierarchical_aspp.parameters())
     
-    print(f"Original model parameters: {original_params:,}")
-    print(f"Lite model parameters: {lite_params:,}")
-    print(f"Parameter reduction: {(1 - lite_params/original_params)*100:.2f}%")
+    print(f"LiteDeepLabV3 with Original ASPP parameters: {original_params:,}")
+    print(f"LiteDeepLabV3 with HierarchicalMSASPP parameters: {hierarchical_params:,}")
+    print(f"Parameter reduction with HierarchicalMSASPP: {(1 - hierarchical_params/original_params)*100:.2f}%")
     
     # Forward pass with timing for both models
     start_time = time.time()
     with torch.no_grad():
-        output_original = model_original(x)
+        output_original = model_original_aspp(x)
     original_time = time.time() - start_time
     
     start_time = time.time()
     with torch.no_grad():
-        output_lite = model_lite(x)
-    lite_time = time.time() - start_time
+        output_hierarchical = model_hierarchical_aspp(x)
+    hierarchical_time = time.time() - start_time
     
     # Print output information
-    print(f"Original model output shape: {output_original.shape}")
-    print(f"Lite model output shape: {output_lite.shape}")
-    print(f"Original model forward pass time: {original_time:.4f} seconds")
-    print(f"Lite model forward pass time: {lite_time:.4f} seconds")
-    print(f"Speed improvement: {(original_time/lite_time - 1)*100:.2f}%")
+    print(f"Original ASPP output shape: {output_original.shape}")
+    print(f"HierarchicalMSASPP output shape: {output_hierarchical.shape}")
+    print(f"Original ASPP forward pass time: {original_time:.4f} seconds")
+    print(f"HierarchicalMSASPP forward pass time: {hierarchical_time:.4f} seconds")
+    print(f"Speed improvement: {(original_time/hierarchical_time - 1)*100:.2f}%")
+
     
     # Optional: Calculate and print memory usage
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
         with torch.no_grad():
-            _ = model_lite(x)
-        lite_mem = torch.cuda.max_memory_allocated()/1024**2
+            _ = model_hierarchical_aspp(x)
+        hierarchical_mem = torch.cuda.max_memory_allocated()/1024**2
         
         torch.cuda.reset_peak_memory_stats()
         with torch.no_grad():
-            _ = model_original(x)
-        orig_mem = torch.cuda.max_memory_allocated()/1024**2
+            _ = model_original_aspp(x)
+        original_mem = torch.cuda.max_memory_allocated()/1024**2
         
-        print(f"Original model GPU Memory: {orig_mem:.2f} MB")
-        print(f"Lite model GPU Memory: {lite_mem:.2f} MB")
-        print(f"Memory reduction: {(1 - lite_mem/orig_mem)*100:.2f}%")
+        print(f"Original ASPP GPU Memory: {original_mem:.2f} MB")
+        print(f"HierarchicalMSASPP GPU Memory: {hierarchical_mem:.2f} MB")
+        print(f"Memory reduction: {(1 - hierarchical_mem/original_mem)*100:.2f}%")
 
-# For backward compatibility so original code can still run
-class DeepLabV3(nn.Module):
-    def __init__(self, num_classes=19, output_stride=16):
-        super(DeepLabV3, self).__init__()
-        self.xception = Xception(output_stride)
-        self.aspp = ASPP(2048, output_stride)
-        self.decoder = Decoder(128, num_classes)
-
-    def forward(self, x):
-        H, W = x.size(2), x.size(3)
-        x, low_level_features = self.xception(x)
-        x = self.aspp(x)
-        x = self.decoder(x, low_level_features)
-        x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True)
-        return x
-
-# Minimally included original Xception for compatibility
-class Xception(nn.Module):
-    def __init__(self, output_stride=16, in_channels=3):
-        super(Xception, self).__init__()
-        if output_stride == 16: b3_s, mf_d, ef_d = 2, 1, (1, 2)
-        if output_stride == 8: b3_s, mf_d, ef_d = 1, 2, (2, 4)
-
-        self.conv1 = nn.Conv2d(3, 32, 3, 2, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.relu = nn.ReLU(inplace=False)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(64)
-
-        self.block1 = Block(64, 128, stride=2, dilation=1, use_first_relu=False)
-        self.block2 = Block(128, 256, stride=2, dilation=1)
-        self.block3 = Block(256, 728, stride=b3_s, dilation=1)
-
-        self.midflow = nn.Sequential(
-            *[Block(728, 728, stride=1, dilation=mf_d) for _ in range(16)]
-        )
-
-        self.block4 = Block(728, 1024, stride=1, dilation=ef_d[0], exit_flow=True)
-
-        self.conv3 = SeperableConv2D(1024, 1536, 3, stride=1, dilation=ef_d[1])
-        self.bn3 = nn.BatchNorm2d(1536)
-        self.conv4 = SeperableConv2D(1536, 1536, 3, stride=1, dilation=ef_d[1])
-        self.bn4 = nn.BatchNorm2d(1536)
-        self.conv5 = SeperableConv2D(1536, 2048, 3, stride=1, dilation=ef_d[1])
-        self.bn5 = nn.BatchNorm2d(2048)
-    
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = self.block1(x)
-        low_level_features = x
-        x = F.relu(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.midflow(x)
-        x = self.block4(x)
-        x = self.relu(x)
-        x = self.conv3(x)
-        x = self.bn3(x)
-        x = self.relu(x)
-        x = self.conv4(x)
-        x = self.bn4(x)
-        x = self.relu(x)
-        x = self.conv5(x)
-        x = self.bn5(x)
-        x = self.relu(x)
-        return x, low_level_features
+        flops_original, params_original = profile(model_original_aspp, inputs=(x,))
+        flops_hierarchical, params_hierarchical = profile(model_hierarchical_aspp, inputs=(x,))
+        print(f"Original ASPP FLOPs: {flops_original/1e9:.2f} GFLOPs, Params: {params_original/1e6:.2f} M")
+        print(f"HierarchicalMSASPP FLOPs: {flops_hierarchical/1e9:.2f} GFLOPs, Params: {params_hierarchical/1e6:.2f} M")
+        print(f"FLOPs reduction with HierarchicalMSASPP: {(1 - flops_hierarchical/flops_original)*100:.2f}%")
 
 if __name__ == "__main__":
     main()

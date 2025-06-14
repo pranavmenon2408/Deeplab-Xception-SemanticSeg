@@ -3,6 +3,46 @@ import torch.nn as nn
 from torch.nn import functional as F
 import time
 
+class LSCFEM(nn.Module):
+    """Long-Short Configurable Context Feature Enhancement Module"""
+    def __init__(self, in_channels, reduction=4):
+        super().__init__()
+        self.channel_reduction = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels//reduction, 1, bias=False),
+            nn.BatchNorm2d(in_channels//reduction),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Short-range context branch
+        self.short_ctx = nn.Sequential(
+            nn.Conv2d(in_channels//reduction, in_channels//reduction, 3, 
+                     padding=1, groups=in_channels//reduction, bias=False),
+            nn.BatchNorm2d(in_channels//reduction),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Long-range context branch
+        self.long_ctx = nn.Sequential(
+            nn.Conv2d(in_channels//reduction, in_channels//reduction, 3,
+                     padding=2, dilation=2, groups=in_channels//reduction, bias=False),
+            nn.BatchNorm2d(in_channels//reduction),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.fusion = nn.Sequential(
+            nn.Conv2d(2*(in_channels//reduction), in_channels, 1, bias=False),
+            nn.BatchNorm2d(in_channels),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        reduced = self.channel_reduction(x)
+        short = self.short_ctx(reduced)
+        long = self.long_ctx(reduced)
+        combined = torch.cat([short, long], dim=1)
+        attention = self.fusion(combined)
+        return x * attention + x
+
 class CCAR(nn.Module):
     """
     Optimized Conditional Channel-wise Attention Routing (CCAR) module
@@ -117,7 +157,7 @@ class AdaptiveContextDSConv(nn.Module):
         
         # Pointwise convolution with group convolution for parameter efficiency
         groups = 1 if in_channels < 32 or out_channels < 32 else min(4, min(in_channels, out_channels) // 16)
-        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, groups=groups, bias=False)
+        self.pointwise = nn.Conv2d(in_channels, out_channels, 1, groups=4, bias=False)
         
         # Normalization and activation
         self.bn = nn.BatchNorm2d(out_channels)
@@ -224,16 +264,23 @@ class LiteXception(nn.Module):
 
         # Entry flow blocks with reduced channels
         self.block1 = Block(48, 96, stride=2, dilation=1, use_first_relu=False)  # Reduced from 128
+        self.ccar1 = CCAR(96)  # Added CCAR for enhanced attention
         self.block2 = Block(96, 192, stride=2, dilation=1)  # Reduced from 256
+        self.ccar2 = CCAR(192)  # Added CCAR for enhanced attention
         self.block3 = Block(192, 384, stride=b3_s, dilation=1)  # Reduced from 728
+        self.ccar3 = CCAR(384)  # Added CCAR for enhanced attention
 
         # Middle flow - reduced number of blocks and channels
         self.midflow = nn.Sequential(
-            *[Block(384, 384, stride=1, dilation=mf_d) for _ in range(8)]  # Reduced from 16 blocks and 728 channels
+            *[Block(384, 384, stride=1, dilation=mf_d) for _ in range(4)]  # Reduced from 16 blocks and 728 channels
         )
+
+        # CCAR for middle flow
+        self.ccar_mid = CCAR(384)  # Added CCAR for enhanced attention in middle flow
 
         # Exit flow
         self.block4 = Block(384, 512, stride=1, dilation=ef_d[0], exit_flow=True)  # Reduced from 1024
+        self.ccar_exit = CCAR(512)  # Added CCAR for enhanced attention in exit flow
 
         # Final separable convolutions
         self.conv3 = AdaptiveContextDSConv(512, 768, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]])  
@@ -242,6 +289,9 @@ class LiteXception(nn.Module):
         self.bn4 = nn.BatchNorm2d(768)
         self.conv5 = AdaptiveContextDSConv(768, 1024, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]]) 
         self.bn5 = nn.BatchNorm2d(1024)
+
+        # CCAR for final convolutions
+        self.ccar_final = CCAR(1024)  # Added CCAR for enhanced attention in final convolutions
     
     def forward(self, x):
         x = self.conv1(x)
@@ -250,16 +300,21 @@ class LiteXception(nn.Module):
         x = self.conv2(x)
         x = self.bn2(x)
         x = self.block1(x)
+        x = self.ccar1(x)
         low_level_features = x
         x = F.relu(x)
         x = self.block2(x)
+        x = self.ccar2(x)
         x = self.block3(x)
+        x = self.ccar3(x)
 
         # Middle flow
         x = self.midflow(x)
+        x = self.ccar_mid(x)
 
         # Exit flow
         x = self.block4(x)
+        x = self.ccar_exit(x)
         x = self.relu(x)
         x = self.conv3(x)
         x = self.bn3(x)
@@ -272,6 +327,7 @@ class LiteXception(nn.Module):
         x = self.conv5(x)
         x = self.bn5(x)
         x = self.relu(x)
+        x = self.ccar_final(x)
 
         return x, low_level_features
 
@@ -332,6 +388,7 @@ class HierarchicalMSASPP(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout(0.2)
         )
+
         
         # Add CCAR for enhanced attention
         self.ccar = CCAR(reduced_channels)
@@ -393,7 +450,7 @@ class ASPP(nn.Module):
         self.branch3 = Asppbranch(in_channels, reduced_channels, 3, dilations[2])
         self.branch4 = Asppbranch(in_channels, reduced_channels, 3, dilations[3])
 
-        self.ccar = CCAR(reduced_channels)
+        #self.ccar = CCAR(reduced_channels)
 
         self.avgpool = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
@@ -421,7 +478,7 @@ class ASPP(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.dropout(x)
-        x = self.ccar(x)
+        #x = self.ccar(x)
         return x
     
 class Decoder(nn.Module):
@@ -492,8 +549,8 @@ def main():
     # Create a random input tensor (batch_size, channels, height, width)
     batch_size = 1
     input_channels = 3
-    input_height = 256
-    input_width = 256
+    input_height = 720
+    input_width = 1280
     num_classes = 26
     
     # Create random input tensor

@@ -406,6 +406,8 @@ class DeepLabV3(nn.Module):
         x=self.decoder(x,low_level_features)
         x=F.interpolate(x,size=(H,W),mode='bilinear',align_corners=True)
         return x
+    
+from thop import profile
 
 def main():
     # Set random seed for reproducibility
@@ -418,8 +420,8 @@ def main():
     # Create a random input tensor (batch_size, channels, height, width)
     batch_size = 1
     input_channels = 3
-    input_height = 256
-    input_width = 256
+    input_height = 512
+    input_width = 1024
     num_classes = 26
     
     # Create random input tensor
@@ -459,6 +461,9 @@ def main():
         print(f"GPU Memory allocated: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
         print(f"GPU Memory cached: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
 
+    flops_original, params_original = profile(model, inputs=(x,))
+        
+    print(f"Original ASPP FLOPs: {flops_original/1e9:.2f} GFLOPs, Params: {params_original/1e6:.2f} M")
 def test_ccar():
     # Create a test tensor
     x = torch.randn(2, 256, 64, 64)

@@ -2,5 +2,12 @@ deeplabv3_IDD_best_CCAR_1.pth
 deeplabv3_IDD_best_CCAR_and_ACDSC_1.pth
 deeplabv3_IDD_best_CCAR_and_ACDSC_2.pth
 deeplabv3_IDD_best_CCAR_and_ACDSC_3.pth
+deeplabv3_IDD_best_CCAR_and_ACDSC_3_iddpart2.pth
+deeplabv3_IDD_best_CCAR_and_ACDSC_lite_iddpart1.pth
+deeplabv3_IDD_best_CCAR_and_ACDSC_lite_iddpart2.pth
+deeplabv3_IDD_best_CCSO.pth
+deeplabv3_IDD_checkpoint_lite_iddpart1.pth
+CCSO_checkpoint_lite_iddpart1.pth
+CCSO_lite_iddpart1.pth
 nohup.out
 __pycache__
