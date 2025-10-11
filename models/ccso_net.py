@@ -1,8 +1,11 @@
+from tracemalloc import start
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet18
 from thop import profile
+import time
+
 
 class LSCFEM(nn.Module):
     """Long-Short Configurable Context Feature Enhancement Module"""
@@ -122,11 +125,15 @@ class CCSONet(nn.Module):
 
 # Test the implementation
 if __name__ == "__main__":
-    model = CCSONet(num_classes=27)
-    x = torch.randn(1, 3, 720, 1280)  # Batch of 2, 512x1024 images
-    output = model(x)  # Output size should match input size
+    model = CCSONet(num_classes=27).to('cpu')
+    x = torch.randn(1, 3, 720, 1280).to("cpu")  # Batch of 2, 512x1024 images
+    start_time = time.time()
+    with torch.no_grad():
+        output = model(x)
+    original_time = time.time() - start_time
     print(f"Input shape: {x.shape}")
     print(f"Output shape: {output.shape}")  # Should be (2, 19, 512, 1024)
     flops, params = profile(model, inputs=(x,))
     print(f"FLOPs: {flops / 1e9:.2f} GFLOPs")
     print(f"Parameters: {params / 1e6:.2f} M")
+    print(f"Original inference time: {original_time:.4f} seconds")

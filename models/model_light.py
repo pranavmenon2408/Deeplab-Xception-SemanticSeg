@@ -1,7 +1,11 @@
+from turtle import back
+from sympy import use
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import time
+from torchvision.models import mobilenet_v3_large
+
 
 class LSCFEM(nn.Module):
     """Long-Short Configurable Context Feature Enhancement Module"""
@@ -107,6 +111,7 @@ class MultiLevelFeatureFusion(nn.Module):
         output = self.pyramid_fusion(fused)
         
         return output
+
 
 
 
@@ -342,7 +347,7 @@ class LiteXception(nn.Module):
             *[Block(384, 384, stride=1, dilation=mf_d) for _ in range(4)]
         )
 
-        self.ccar_midflow = CCAR(384)
+        #self.ccar_midflow = CCAR(384)
         
         # Exit flow
         self.block4 = Block(384, 512, stride=1, dilation=ef_d[0], exit_flow=True)
@@ -353,7 +358,8 @@ class LiteXception(nn.Module):
         self.bn4 = nn.BatchNorm2d(768)
         self.conv5 = AdaptiveContextDSConv(768, 1024, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]]) 
         self.bn5 = nn.BatchNorm2d(1024)
-        self.ccar_final = CCAR(1024)
+        #self.ccar_final = CCAR(1024)
+        
     
     def forward(self, x):
         x = self.conv1(x)
@@ -378,7 +384,7 @@ class LiteXception(nn.Module):
 
         # Middle flow
         x = self.midflow(x)
-        x = self.ccar_midflow(x)
+        #x = self.ccar_midflow(x)
 
         # Exit flow
         x = self.block4(x)
@@ -394,9 +400,87 @@ class LiteXception(nn.Module):
         x = self.conv5(x)
         x = self.bn5(x)
         x = self.relu(x)
-        x = self.ccar_final(x)
+        #x = self.ccar_final(x)
 
         return x, [low_level_1, low_level_2, low_level_3]
+    
+class MobileNetV3_Enhanced(nn.Module):
+    """
+    Enhanced MobileNetV3 backbone with multiple feature extraction points
+    (Direct replacement for LiteXception)
+    """
+    def __init__(self, output_stride=16, in_channels=3):
+        super(MobileNetV3_Enhanced, self).__init__()
+        
+        # Load pretrained MobileNetV3
+        backbone = mobilenet_v3_large(pretrained=True)
+        self.features = backbone.features
+        
+        # Define feature extraction points to match LiteXception's pattern
+        # LiteXception extracts at: 96, 192, 384 channels
+        # MobileNetV3 equivalent points: after layers 3, 6, 12
+        self.extraction_points = [3, 6, 12]
+        self.feature_channels = [24, 40, 112]  # Corresponding channel counts
+        
+        # Add CCAR modules at feature extraction points
+        self.ccar1 = CCAR(24)   # After layer 3
+        self.ccar2 = CCAR(40)   # After layer 6  
+        self.ccar3 = CCAR(112)  # After layer 12
+        
+        # Replace final layers with AdaptiveContextDSConv (matching LiteXception pattern)
+        if output_stride == 16: 
+            ef_d = (1, 2)
+        if output_stride == 8: 
+            ef_d = (2, 4)
+            
+        # Final separable convolutions (replacing original final layers)
+        self.conv3 = AdaptiveContextDSConv(960, 768, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]])  
+        self.bn3 = nn.BatchNorm2d(768)
+        self.conv4 = AdaptiveContextDSConv(768, 768, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]])  
+        self.bn4 = nn.BatchNorm2d(768)
+        self.conv5 = AdaptiveContextDSConv(768, 1024, kernel_size=3, stride=1, dilation_rates=[1, ef_d[1]]) 
+        self.bn5 = nn.BatchNorm2d(1024)
+        self.relu = nn.ReLU(inplace=False)
+    
+    def forward(self, x):
+        # Extract multiple low-level features (exactly like LiteXception)
+        low_level_features = []
+        
+        # Process through MobileNetV3 layers
+        for i, layer in enumerate(self.features):
+            x = layer(x)
+            
+            # Extract features at specific points with CCAR enhancement
+            if i == 3:  # First extraction point
+                x = self.ccar1(x)
+                low_level_1 = x  # 40 channels (equivalent to LiteXception's 96)
+                low_level_features.append(low_level_1)
+            elif i == 6:  # Second extraction point
+                x = self.ccar2(x)
+                low_level_2 = x  # 80 channels (equivalent to LiteXception's 192)
+                low_level_features.append(low_level_2)
+            elif i == 12:  # Third extraction point
+                x = self.ccar3(x)
+                low_level_3 = x  # 160 channels (equivalent to LiteXception's 384)
+                low_level_features.append(low_level_3)
+        
+        # Apply final AdaptiveContextDSConv layers (like LiteXception's exit flow)
+        x = self.relu(x)
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu(x)
+
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = self.relu(x)
+
+        x = self.conv5(x)
+        x = self.bn5(x)
+        x = self.relu(x)
+
+        # Return in exact same format as LiteXception: (final_features, [low_level_1, low_level_2, low_level_3])
+        return x, low_level_features
+
 
 
 class HierarchicalMSASPP(nn.Module):
@@ -459,7 +543,7 @@ class HierarchicalMSASPP(nn.Module):
 
         
         # Add CCAR for enhanced attention
-        self.ccar = CCAR(reduced_channels)
+        #self.ccar = CCAR(reduced_channels)
     
     def forward(self, x):
         # Extract multi-scale features
@@ -485,7 +569,7 @@ class HierarchicalMSASPP(nn.Module):
         output = self.final_conv(final_features)
         
         # Apply CCAR attention
-        output = self.ccar(output)
+        #output = self.ccar(output)
         
         return output
 
@@ -582,14 +666,14 @@ class Decoder(nn.Module):
         return x
     
 class EnhancedDecoder(nn.Module):
-    def __init__(self, backbone_channels=[96, 192, 384], num_classes=19, aspp_channels=64):
+    def __init__(self, backbone_channels=[96, 192, 384], num_classes=19, aspp_channels=256):
         super().__init__()
         
         # Multi-level feature fusion
         self.feature_fusion = MultiLevelFeatureFusion(backbone_channels, aspp_channels)
         
         # Keep existing CCAR for enhanced attention
-        self.ccar_decoder = CCAR(128)
+        #self.ccar_decoder = CCAR(128)
         
         # Final classification layers
         self.last_conv = nn.Sequential(
@@ -605,7 +689,7 @@ class EnhancedDecoder(nn.Module):
         fused = self.feature_fusion(high_features, low_level_features_list)
         
         # Apply CCAR attention
-        fused = self.ccar_decoder(fused)
+        #fused = self.ccar_decoder(fused)
         
         # Final classification
         output = self.last_conv(fused)
@@ -614,25 +698,30 @@ class EnhancedDecoder(nn.Module):
 
     
 class LiteDeepLabV3(nn.Module):
-    def __init__(self, num_classes=19, output_stride=16, use_hierarchical_aspp=True):
+    def __init__(self, num_classes=19, output_stride=16, use_hierarchical_aspp=True, use_mobilenet_v3=True):
         super(LiteDeepLabV3, self).__init__()
-        self.xception = LiteXception(output_stride)
+        #self.xception = LiteXception(output_stride)
+        if use_mobilenet_v3:
+            self.backbone = MobileNetV3_Enhanced(output_stride)
+        else:
+            self.backbone = LiteXception(output_stride)
         
         # Keep existing HierarchicalMSASPP and CCAR intact
         if use_hierarchical_aspp:
             self.aspp = HierarchicalMSASPP(1024, output_stride)
             # Use enhanced decoder with multi-level fusion
-            self.decoder = EnhancedDecoder([96, 192, 384], num_classes, aspp_channels=64)
+            self.decoder = EnhancedDecoder([24, 40, 112], num_classes, aspp_channels=64)
         else:
             self.aspp = ASPP(1024, output_stride)
             # Fall back to original decoder for backward compatibility
-            self.decoder = Decoder(96, num_classes, aspp_channels=128)
+            self.decoder = EnhancedDecoder([24, 40, 112], num_classes, aspp_channels=128)
 
     def forward(self, x):
         H, W = x.size(2), x.size(3)
         
         # Extract features with multiple low-level extraction points
-        backbone_features, low_level_features_list = self.xception(x)
+        #backbone_features, low_level_features_list = self.xception(x)
+        backbone_features, low_level_features_list = self.backbone(x)
         
         # Apply HierarchicalMSASPP (keeping intact)
         aspp_features = self.aspp(backbone_features)
@@ -658,7 +747,7 @@ def main():
     torch.manual_seed(42)
     
     # Check if CUDA is available
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
     # Create a random input tensor (batch_size, channels, height, width)
@@ -666,33 +755,33 @@ def main():
     input_channels = 3
     input_height = 720
     input_width = 1280
-    num_classes = 26
+    num_classes = 27
     
     # Create random input tensor
     x = torch.randn(batch_size, input_channels, input_height, input_width).to(device)
     print(f"Input tensor shape: {x.shape}")
     
     # Initialize models with both ASPP variants
-    model_original_aspp = LiteDeepLabV3(num_classes=num_classes, output_stride=16, use_hierarchical_aspp=False).to(device)
-    model_hierarchical_aspp = LiteDeepLabV3(num_classes=num_classes, output_stride=16, use_hierarchical_aspp=True).to(device)
+    #model_original_aspp = LiteDeepLabV3(num_classes=num_classes, output_stride=16, use_hierarchical_aspp=False, use_mobilenet_v3=False).to(device)
+    model_hierarchical_aspp = LiteDeepLabV3(num_classes=num_classes, output_stride=16, use_hierarchical_aspp=True, use_mobilenet_v3=True).to(device)
     
     # Set models to evaluation mode
-    model_original_aspp.eval()
+    #model_original_aspp.eval()
     model_hierarchical_aspp.eval()
     
     # Print model summaries
-    original_params = sum(p.numel() for p in model_original_aspp.parameters())
+    #original_params = sum(p.numel() for p in model_original_aspp.parameters())
     hierarchical_params = sum(p.numel() for p in model_hierarchical_aspp.parameters())
     
-    print(f"LiteDeepLabV3 with Original ASPP parameters: {original_params:,}")
+    #print(f"LiteDeepLabV3 with Original ASPP parameters: {original_params:,}")
     print(f"LiteDeepLabV3 with HierarchicalMSASPP parameters: {hierarchical_params:,}")
-    print(f"Parameter reduction with HierarchicalMSASPP: {(1 - hierarchical_params/original_params)*100:.2f}%")
+    #print(f"Parameter reduction with HierarchicalMSASPP: {(1 - hierarchical_params/original_params)*100:.2f}%")
     
     # Forward pass with timing for both models
-    start_time = time.time()
-    with torch.no_grad():
-        output_original = model_original_aspp(x)
-    original_time = time.time() - start_time
+    # start_time = time.time()
+    # with torch.no_grad():
+    #     output_original = model_original_aspp(x)
+    # original_time = time.time() - start_time
     
     start_time = time.time()
     with torch.no_grad():
@@ -700,11 +789,45 @@ def main():
     hierarchical_time = time.time() - start_time
     
     # Print output information
-    print(f"Original ASPP output shape: {output_original.shape}")
+    #print(f"Original ASPP output shape: {output_original.shape}")
     print(f"HierarchicalMSASPP output shape: {output_hierarchical.shape}")
-    print(f"Original ASPP forward pass time: {original_time:.4f} seconds")
+    #print(f"Original ASPP forward pass time: {original_time:.4f} seconds")
     print(f"HierarchicalMSASPP forward pass time: {hierarchical_time:.4f} seconds")
-    print(f"Speed improvement: {(original_time/hierarchical_time - 1)*100:.2f}%")
+    #print(f"Speed improvement: {(original_time/hierarchical_time - 1)*100:.2f}%")
+
+    # from torch.profiler import profile, record_function, ProfilerActivity
+    # with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
+    #     with record_function("model_inference"):
+    #         model_hierarchical_aspp(x)
+    # print(prof.key_averages().table(sort_by="cpu_time_total"))
+
+    # # Apply dynamic quantization to conv layers
+    # quantized_model = torch.quantization.quantize_dynamic(
+    #     model_hierarchical_aspp,
+    #     {nn.Conv2d},
+    #     dtype=torch.qint8
+    # )
+
+    # # Must run calibration
+    # with torch.no_grad():
+    #     for _ in range(10):
+    #         quantized_model(torch.randn(1,3,720,1280))
+
+    # start_time = time.time()
+    # with torch.no_grad():
+    #     output_hierarchical = quantized_model(x)
+    # hierarchical_time = time.time() - start_time
+    # print(f"Quantized HierarchicalMSASPP forward pass time: {hierarchical_time:.4f} seconds")
+
+    # with torch.profiler.profile(
+    #     activities=[torch.profiler.ProfilerActivity.CPU],
+    #     record_shapes=True
+    # ) as prof:
+    #     quantized_model(x)
+    # print(prof.key_averages().table(sort_by="cpu_time_total"))
+
+
+
 
     
     # Optional: Calculate and print memory usage
@@ -715,19 +838,19 @@ def main():
         hierarchical_mem = torch.cuda.max_memory_allocated()/1024**2
         
         torch.cuda.reset_peak_memory_stats()
-        with torch.no_grad():
-            _ = model_original_aspp(x)
-        original_mem = torch.cuda.max_memory_allocated()/1024**2
+        # with torch.no_grad():
+        #     _ = model_original_aspp(x)
+        # original_mem = torch.cuda.max_memory_allocated()/1024**2
         
-        print(f"Original ASPP GPU Memory: {original_mem:.2f} MB")
+        #print(f"Original ASPP GPU Memory: {original_mem:.2f} MB")
         print(f"HierarchicalMSASPP GPU Memory: {hierarchical_mem:.2f} MB")
-        print(f"Memory reduction: {(1 - hierarchical_mem/original_mem)*100:.2f}%")
+        #print(f"Memory reduction: {(1 - hierarchical_mem/original_mem)*100:.2f}%")
 
-        flops_original, params_original = profile(model_original_aspp, inputs=(x,))
+        #flops_original, params_original = profile(model_original_aspp, inputs=(x,))
         flops_hierarchical, params_hierarchical = profile(model_hierarchical_aspp, inputs=(x,))
-        print(f"Original ASPP FLOPs: {flops_original/1e9:.2f} GFLOPs, Params: {params_original/1e6:.2f} M")
+        #print(f"Original ASPP FLOPs: {flops_original/1e9:.2f} GFLOPs, Params: {params_original/1e6:.2f} M")
         print(f"HierarchicalMSASPP FLOPs: {flops_hierarchical/1e9:.2f} GFLOPs, Params: {params_hierarchical/1e6:.2f} M")
-        print(f"FLOPs reduction with HierarchicalMSASPP: {(1 - flops_hierarchical/flops_original)*100:.2f}%")
+        #print(f"FLOPs reduction with HierarchicalMSASPP: {(1 - flops_hierarchical/flops_original)*100:.2f}%")
 
 if __name__ == "__main__":
     main()

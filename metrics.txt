@@ -154,12 +154,16 @@ Model Saved with Mean IOU:  0.7920823700566539
 
 IDD-20K-II
 LiteDeepLabV3:
-Epoch [27/50], Train Loss: 0.3059, Val Loss: 0.4837, Val Accuracy: 0.8622, Mean IOU: 0.7948, Precision: 0.8855, Recall: 0.8622, F1 Score: 0.8583
-Model Saved with Mean IOU:  0.7947944856085484
+Epoch [48/50], Train Loss: 0.2370, Val Loss: 0.4898, Val Accuracy: 0.8774, Mean IOU: 0.8121, Precision: 0.8943, Recall: 0.8774, F1 Score: 0.8715
+Best model saved with Mean IOU:  0.812108881750378
 
 DeeplabV3+:
 Epoch [49/50], Train Loss: 0.1547, Val Loss: 0.7050, Val Accuracy: 0.8633, Mean IOU: 0.7977, Precision: 0.8846, Recall: 0.8633, F1 Score: 0.8608
 Model Saved with Mean IOU:  0.7977126281690824
+
+DeeplabV3+(MBV3):
+Epoch [49/50], Train Loss: 0.2153, Val Loss: 0.5327, Val Accuracy: 0.8750, Mean IOU: 0.8084, Precision: 0.8909, Recall: 0.8750, F1 Score: 0.8688
+Best model saved with Mean IOU:  0.8084207245806382
 
 CCSO_Net:
 Epoch [34/50], Train Loss: 0.1909, Val Loss: 0.5782, Val Accuracy: 0.8680, Mean IOU: 0.8023, Precision: 0.8905, Recall: 0.8680, F1 Score: 0.8653
@@ -167,9 +171,87 @@ Model Saved with Mean IOU:  0.8022526749502427
 
 IDD-2OK-I
 LiteDeepLabV3:
-Epoch [21/100], Train Loss: 0.2200, Val Loss: 0.6193, Val Accuracy: 0.8644, Mean IOU: 0.7998, Precision: 0.8869, Recall: 0.8644, F1 Score: 0.8602
-Best model saved with Mean IOU:  0.7998259418419013
+Epoch [87/100], Train Loss: 0.2061, Val Loss: 0.6110, Val Accuracy: 0.8766, Mean IOU: 0.8137, Precision: 0.8947, Recall: 0.8766, F1 Score: 0.8712
+Best model saved with Mean IOU:  0.8136811862480385
 
 CCSO_Net:
 Epoch [27/100], Train Loss: 0.2109, Val Loss: 0.5753, Val Accuracy: 0.8678, Mean IOU: 0.8033, Precision: 0.8906, Recall: 0.8678, F1 Score: 0.8637
 Best model saved with Mean IOU:  0.8032630565030373
+
+DeeplabV3+:
+Epoch [49/50], Train Loss: 0.2394, Val Loss: 0.6325, Val Accuracy: 0.8570, Mean IOU: 0.7891, Precision: 0.8800, Recall: 0.8570, F1 Score: 0.8522
+Model Saved with Mean IOU:  0.7891
+
+DeeplabV3+(MBV3):
+Epoch [23/50], Train Loss: 0.2769, Val Loss: 0.5150, Val Accuracy: 0.8735, Mean IOU: 0.8064, Precision: 0.8911, Recall: 0.8735, F1 Score: 0.8652
+Best model saved with Mean IOU:  0.8063790675757736
+
+
+DeeplabV3 (MBV3 + Original ASPP + Normal Feature Fusion)
+Total parameters: 5,851,723
+Trainable parameters: 5,851,723
+Output tensor shape: torch.Size([1, 27, 720, 1280])
+Forward pass time: 18.2959 seconds
+Output shape verification: Passed
+GPU Memory allocated: 128.03 MB
+GPU Memory cached: 428.00 MB
+[INFO] Register count_convNd() for <class 'torch.nn.modules.conv.Conv2d'>.
+[INFO] Register count_normalization() for <class 'torch.nn.modules.batchnorm.BatchNorm2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.activation.ReLU'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.container.Sequential'>.
+[INFO] Register count_adap_avgpool() for <class 'torch.nn.modules.pooling.AdaptiveAvgPool2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.dropout.Dropout'>.
+Original ASPP FLOPs: 80.39 GFLOPs, Params: 5.63 M
+
+
+DeeplabV3 (MBV3 + Hierarchical ASPP + Normal Feature Fusion)
+Total parameters: 3,760,731
+Trainable parameters: 3,760,731
+Output shape after final conv: torch.Size([1, 64, 23, 40])
+Output tensor shape: torch.Size([1, 27, 720, 1280])
+Forward pass time: 9.2730 seconds
+Output shape verification: Passed
+GPU Memory allocated: 120.00 MB
+GPU Memory cached: 428.00 MB
+[INFO] Register count_convNd() for <class 'torch.nn.modules.conv.Conv2d'>.
+[INFO] Register count_normalization() for <class 'torch.nn.modules.batchnorm.BatchNorm2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.activation.ReLU'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.container.Sequential'>.
+[INFO] Register count_adap_avgpool() for <class 'torch.nn.modules.pooling.AdaptiveAvgPool2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.dropout.Dropout'>.
+Original ASPP FLOPs: 53.62 GFLOPs, Params: 3.76 M
+
+DeeplabV3 (MBV3 + Hierarchical ASPP + Multi Feature Fusion)
+LiteDeepLabV3 with HierarchicalMSASPP parameters: 4,274,667
+HierarchicalMSASPP output shape: torch.Size([1, 27, 720, 1280])
+HierarchicalMSASPP forward pass time: 0.0236 seconds
+HierarchicalMSASPP GPU Memory: 389.06 MB
+[INFO] Register count_convNd() for <class 'torch.nn.modules.conv.Conv2d'>.
+[INFO] Register count_normalization() for <class 'torch.nn.modules.batchnorm.BatchNorm2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.activation.ReLU'>.
+[INFO] Register count_adap_avgpool() for <class 'torch.nn.modules.pooling.AdaptiveAvgPool2d'>.
+[INFO] Register count_softmax() for <class 'torch.nn.modules.activation.Softmax'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.container.Sequential'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.dropout.Dropout'>.
+[INFO] Register count_convNd() for <class 'torch.nn.modules.conv.Conv2d'>.
+[INFO] Register count_normalization() for <class 'torch.nn.modules.batchnorm.BatchNorm2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.activation.ReLU'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.container.Sequential'>.
+[INFO] Register count_adap_avgpool() for <class 'torch.nn.modules.pooling.AdaptiveAvgPool2d'>.
+[INFO] Register count_softmax() for <class 'torch.nn.modules.activation.Softmax'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.dropout.Dropout'>.
+HierarchicalMSASPP FLOPs: 22.11 GFLOPs, Params: 4.27 M
+
+DeeplabV3 (MBV3 + Original ASPP + Multi Feature Fusion)
+LiteDeepLabV3 with HierarchicalMSASPP parameters: 7,839,003
+HierarchicalMSASPP output shape: torch.Size([1, 27, 720, 1280])
+HierarchicalMSASPP forward pass time: 17.0102 seconds
+HierarchicalMSASPP GPU Memory: 431.11 MB
+[INFO] Register count_convNd() for <class 'torch.nn.modules.conv.Conv2d'>.
+[INFO] Register count_normalization() for <class 'torch.nn.modules.batchnorm.BatchNorm2d'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.activation.ReLU'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.container.Sequential'>.
+[INFO] Register count_adap_avgpool() for <class 'torch.nn.modules.pooling.AdaptiveAvgPool2d'>.
+[INFO] Register count_softmax() for <class 'torch.nn.modules.activation.Softmax'>.
+[INFO] Register zero_ops() for <class 'torch.nn.modules.dropout.Dropout'>.
+HierarchicalMSASPP FLOPs: 29.47 GFLOPs, Params: 7.84 M

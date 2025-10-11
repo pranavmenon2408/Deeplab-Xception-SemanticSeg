@@ -3,6 +3,47 @@ import torch.nn as nn
 from torch.nn import functional as F
 import time
 import numpy as np
+from torchvision.models import mobilenet_v3_large
+
+class MobileNetV3Backbone(nn.Module):
+    def __init__(self, output_stride=16, pretrained=True):
+        super().__init__()
+        # Load pretrained MobileNetV3 Large
+        backbone = mobilenet_v3_large(pretrained=pretrained)
+        self.features = backbone.features
+        
+        # Remove unused final layers
+        self.features = nn.Sequential(*list(self.features.children())[:-1])
+        
+        # Feature extraction points
+        self.low_level_features_idx = 3  # After 4th layer (stride 4)
+        self.high_level_features_idx = -1  # Last feature map
+        
+        # Output stride adaptation
+        if output_stride == 16:
+            self._set_dilation(2)
+    
+    def _set_dilation(self, dilation_rate):
+        """Adjust stride to dilation for output stride 16"""
+        for i in range(16, len(self.features)):
+            module = self.features[i]
+            if isinstance(module, nn.Conv2d):
+                if module.stride == (2, 2):
+                    module.stride = (1, 1)
+                    module.dilation = (dilation_rate, dilation_rate)
+                    padding = dilation_rate
+                    module.padding = (padding, padding)
+    
+    def forward(self, x):
+        low_level_feat = None
+        for idx, layer in enumerate(self.features):
+            x = layer(x)
+            if idx == self.low_level_features_idx:
+                low_level_feat = x  # Shape: [N, 40, H/4, W/4]
+        
+        high_level_feat = x  # Shape: [N, 960, H/16, W/16]
+        return high_level_feat, low_level_feat
+    
 
 class CCAR(nn.Module):
     """
@@ -192,6 +233,97 @@ class AdaptiveContextDSConv(nn.Module):
         
         return output
     
+class HierarchicalMSASPP(nn.Module):
+    """
+    Multi-Scale ASPP with hierarchical feature aggregation
+    """
+    def __init__(self, in_channels, output_stride=16):
+        super(HierarchicalMSASPP, self).__init__()
+        
+        if output_stride == 16:
+            dilations = [1, 3, 6, 9]  # Smaller, more fine-grained dilations
+        else:
+            dilations = [1, 6, 12, 18]
+        
+        reduced_channels = 64
+        
+        # Multi-scale branches with different kernel sizes
+        self.ms_branches = nn.ModuleList()
+        kernel_sizes = [1, 3, 5, 7]
+        
+        for i, (dil, ks) in enumerate(zip(dilations, kernel_sizes)):
+            if ks == 1:
+                branch = nn.Sequential(
+                    nn.Conv2d(in_channels, reduced_channels, 1, bias=False),
+                    nn.BatchNorm2d(reduced_channels),
+                    nn.ReLU(inplace=True)
+                )
+            else:
+                padding = (ks // 2) * dil
+                branch = nn.Sequential(
+                    # Depthwise separable with multi-scale
+                    nn.Conv2d(in_channels, in_channels, ks, padding=padding, 
+                             dilation=dil, groups=in_channels, bias=False),
+                    nn.Conv2d(in_channels, reduced_channels, 1, bias=False),
+                    nn.BatchNorm2d(reduced_channels),
+                    nn.ReLU(inplace=True)
+                )
+            self.ms_branches.append(branch)
+        
+        # Hierarchical aggregation - combine features at different levels
+        self.level1_fusion = nn.Conv2d(reduced_channels * 2, reduced_channels, 1, bias=False)
+        self.level2_fusion = nn.Conv2d(reduced_channels * 2, reduced_channels, 1, bias=False)
+        
+        # Global context with squeeze and excitation
+        self.global_context = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(in_channels, reduced_channels // 4, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(reduced_channels // 4, reduced_channels, 1),
+            nn.Sigmoid()
+        )
+        
+        # Final fusion
+        self.final_conv = nn.Sequential(
+            nn.Conv2d(reduced_channels * 3, reduced_channels, 1, bias=False),
+            nn.BatchNorm2d(reduced_channels),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2)
+        )
+
+        
+        # Add CCAR for enhanced attention
+        #self.ccar = CCAR(reduced_channels)
+    
+    def forward(self, x):
+        # Extract multi-scale features
+        ms_features = [branch(x) for branch in self.ms_branches]
+        
+        # Hierarchical aggregation
+        # Level 1: Combine fine-scale features (1x1 and 3x3)
+        level1 = self.level1_fusion(torch.cat([ms_features[0], ms_features[1]], dim=1))
+        
+        # Level 2: Combine medium-scale features (5x5 and 7x7)  
+        level2 = self.level2_fusion(torch.cat([ms_features[2], ms_features[3]], dim=1))
+        
+        # Global context
+        global_ctx = self.global_context(x)
+        global_features = level1 * global_ctx + level2 * (1 - global_ctx)
+        
+        # Interpolate global features to match spatial dimensions
+        global_features = F.interpolate(global_features, size=x.shape[2:], 
+                                      mode='bilinear', align_corners=True)
+        
+        # Final fusion
+        final_features = torch.cat([level1, level2, global_features], dim=1)
+        output = self.final_conv(final_features)
+        print(f"Output shape after final conv: {output.shape}")
+        
+        # Apply CCAR attention
+        #output = self.ccar(output)
+        
+        return output
+    
 class Block(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, dilation=1, exit_flow=False, use_first_relu=True, use_adaptive_conv=False):
         super(Block, self).__init__()
@@ -368,10 +500,10 @@ class Decoder(nn.Module):
         self.bn1=nn.BatchNorm2d(48)
         self.relu=nn.ReLU(inplace=False)
 
-        self.ccar_decoder = CCAR(48+256)
+        #self.ccar_decoder = CCAR(48+256)
 
         self.last_conv=nn.Sequential(
-            nn.Conv2d(48+256, 256, 3, stride=1, padding=1, bias=False),
+            nn.Conv2d(48+64, 256, 3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=False),
             nn.Conv2d(256, 256, 3, stride=1, padding=1, bias=False),
@@ -395,9 +527,11 @@ class Decoder(nn.Module):
 class DeepLabV3(nn.Module):
     def __init__(self,num_classes=19,output_stride=16):
         super(DeepLabV3,self).__init__()
-        self.xception=Xception(output_stride)
-        self.aspp=ASPP(2048,output_stride)
-        self.decoder=Decoder(128,num_classes)
+        #self.xception=Xception(output_stride)
+        self.xception=MobileNetV3Backbone(output_stride=output_stride)
+        #self.aspp=ASPP(160,output_stride)
+        self.aspp=HierarchicalMSASPP(160,output_stride=output_stride)
+        self.decoder=Decoder(24,num_classes)
 
     def forward(self,x):
         H,W=x.size(2),x.size(3)
@@ -420,9 +554,9 @@ def main():
     # Create a random input tensor (batch_size, channels, height, width)
     batch_size = 1
     input_channels = 3
-    input_height = 512
-    input_width = 1024
-    num_classes = 26
+    input_height = 720
+    input_width = 1280
+    num_classes = 27
     
     # Create random input tensor
     x = torch.randn(batch_size, input_channels, input_height, input_width).to(device)

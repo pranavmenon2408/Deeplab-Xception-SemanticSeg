@@ -1,5 +1,6 @@
 import os
 from tty import CC
+from sympy import Li
 import torch
 from torch import mode
 import torch.nn.functional as F
@@ -9,6 +10,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
 from models.model_light_2 import LiteDeepLabV3
+from models.model_light import LiteDeepLabV3
 from models.ccso_net import CCSONet
 from models.model import DeepLabV3
 from utils.utils_IDD import DEVICE, NUM_CLASSES
@@ -17,9 +19,9 @@ from utils.utils_IDD import DEVICE, NUM_CLASSES
 start_event=torch.cuda.Event(enable_timing=True)
 end_event=torch.cuda.Event(enable_timing=True)
 
-#model = DeepLabV3(num_classes=NUM_CLASSES).to(DEVICE)
-model = CCSONet(num_classes=NUM_CLASSES, pretrained=True).to(DEVICE)
-model.load_state_dict(torch.load('/home/pranav/DeepLabV3_Xception/deeplabv3_IDD_best_CCSO.pth'))
+model = LiteDeepLabV3(num_classes=NUM_CLASSES, output_stride=16,use_hierarchical_aspp=True, use_mobilenet_v3=True).to(DEVICE)
+#model = CCSONet(num_classes=NUM_CLASSES, pretrained=True).to(DEVICE)
+model.load_state_dict(torch.load('/home/pranav/DeepLabV3_Xception/deeplabv3_IDD_lite_iddpart1.pth'))
 model.eval()
 
 # Updated transform pipeline
@@ -89,7 +91,7 @@ def visualize_prediction(image, mask, save_path=None):
 
 # Function for batch-wise prediction
 def predict_batch(image_paths, output_paths):
-    batch_size = 4  # Adjust batch size as per your system's capability
+    batch_size = 1  # Adjust batch size as per your system's capability
     elapsed_time_list = []
 
     with torch.no_grad():
